@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Sahith",
+    "email": "student@example.com",
+    "department": "CSE",
+    "title": "Fire issue in lab",
+    "description": "There is smoke and fire smell near the computer lab."
+  },
+  {
+    "name": "Sanithya",
+    "email": "sanithya@example.com",
+    "department": "ECE",
+    "title": "WiFi slow in hostel",
+    "description": "The hostel WiFi is very slow and online classes are getting interrupted."
+  },
+  {
+    "name": "Manoj",
+    "email": "manoj@example.com",
+    "department": "CSE",
+    "title": "Fan not working in classroom",
+    "description": "One fan in classroom C204 is not working properly."
+  },
+  {
+    "name": "Reshma",
+    "email": "reshma@example.com",
+    "department": "CSE",
+    "title": "Security harassment near gate",
+    "description": "A student reported harassment and feels unsafe near the main gate."
+  },
+  {
+    "name": "Demo Student",
+    "email": "demo@example.com",
+    "department": "IT",
+    "title": "Library seating suggestion",
+    "description": "Please add more charging points and seating in the library."
+  }
+]
