@@ -67,10 +67,60 @@ def update_complaint_status(complaint_id, status):
     return {"id": complaint_id, **_memory_store[complaint_id]}
 
 
+def get_complaint(complaint_id):
+    db = get_firestore_client()
+    if db:
+        doc = db.collection("complaints").document(complaint_id).get()
+        return {"id": doc.id, **doc.to_dict()} if doc.exists else None
+    
+    data = _memory_store.get(complaint_id)
+    return {"id": complaint_id, **data} if data else None
+
+
+def save_complaint_solution(complaint_id, solution):
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_firestore_client()
+    if db:
+        doc_ref = db.collection("complaints").document(complaint_id)
+        if doc_ref.get().exists:
+            doc_ref.update({"ai_solution": solution, "updated_at": now})
+            return {"id": complaint_id, **doc_ref.get().to_dict()}
+        return None
+
+    if complaint_id in _memory_store:
+        _memory_store[complaint_id]["ai_solution"] = solution
+        _memory_store[complaint_id]["updated_at"] = now
+        return {"id": complaint_id, **_memory_store[complaint_id]}
+    return None
+
+
+def update_complaint_rating(complaint_id, rating):
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_firestore_client()
+    if db:
+        doc_ref = db.collection("complaints").document(complaint_id)
+        snapshot = doc_ref.get()
+        if not snapshot.exists:
+            return None
+        doc_ref.update({"rating": rating, "updated_at": now})
+        updated = doc_ref.get().to_dict()
+        return {"id": complaint_id, **updated}
+
+    if complaint_id not in _memory_store:
+        return None
+    _memory_store[complaint_id]["rating"] = rating
+    _memory_store[complaint_id]["updated_at"] = now
+    return {"id": complaint_id, **_memory_store[complaint_id]}
+
+
 def get_complaint_stats():
     complaints = list_complaints()
     total = len(complaints)
     score_sum = sum(int(item.get("priority_score", 0)) for item in complaints)
+    
+    rated_complaints = [item for item in complaints if item.get("rating") is not None]
+    rating_sum = sum(int(item.get("rating", 0)) for item in rated_complaints)
+    average_rating = round(rating_sum / len(rated_complaints), 1) if rated_complaints else 0
 
     return {
         "total": total,
@@ -81,6 +131,7 @@ def get_complaint_stats():
         "in_progress": count_by(complaints, "status", "In Progress"),
         "resolved": count_by(complaints, "status", "Resolved"),
         "average_priority_score": round(score_sum / total, 2) if total else 0,
+        "average_satisfaction_score": average_rating,
         "sdg_9_count": count_by(complaints, "sdg", "SDG 9"),
         "sdg_16_count": count_by(complaints, "sdg", "SDG 16"),
         "escalation_count": sum(1 for item in complaints if item.get("escalation_required")),

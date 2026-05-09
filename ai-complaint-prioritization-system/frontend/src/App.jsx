@@ -51,6 +51,11 @@ export default function App() {
     await loadData();
   }
 
+  async function handleRatingChange(id, rating) {
+    await api.submitRating(id, rating);
+    await loadData();
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
@@ -96,6 +101,7 @@ export default function App() {
             complaints={complaints}
             loading={loading}
             onStatusChange={handleStatusChange}
+            onRatingChange={handleRatingChange}
           />
         </section>
       </div>
