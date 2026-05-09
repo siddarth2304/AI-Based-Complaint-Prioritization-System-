@@ -30,4 +30,13 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  submitRating: (id, rating) =>
+    request(`/api/complaints/${id}/rating`, {
+      method: "PATCH",
+      body: JSON.stringify({ rating }),
+    }),
+  generateSolution: (id) =>
+    request(`/api/complaints/${id}/solution`, {
+      method: "POST",
+    }),
 };

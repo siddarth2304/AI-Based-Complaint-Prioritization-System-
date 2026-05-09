@@ -4,12 +4,15 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from services.ai_priority_service import classify_complaint
+from services.ai_priority_service import classify_complaint, generate_resolution_sop
 from services.firestore_service import (
     create_complaint,
     get_complaint_stats,
     list_complaints,
     update_complaint_status,
+    update_complaint_rating,
+    get_complaint,
+    save_complaint_solution,
 )
 from services.sla_service import calculate_sla_deadline
 
@@ -43,7 +46,7 @@ def create_app():
         if missing:
             return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-        classification = classify_complaint(payload["title"], payload["description"])
+        classification = classify_complaint(payload["title"], payload["description"], payload.get("image"))
         now = datetime.now(timezone.utc).isoformat()
         sla_deadline = calculate_sla_deadline(classification["priority"])
 
@@ -58,6 +61,7 @@ def create_app():
             "priority_score": int(classification["priority_score"]),
             "ai_reason": classification["ai_reason"],
             "sdg": classification["sdg"],
+            "assigned_department": classification.get("assigned_department", "General Services"),
             "status": "Pending",
             "sla_deadline": sla_deadline,
             "escalation_required": bool(classification["escalation_required"]),
@@ -86,6 +90,36 @@ def create_app():
         updated = update_complaint_status(complaint_id, status)
         if not updated:
             return jsonify({"error": "Complaint not found"}), 404
+        return jsonify(updated)
+
+    @app.patch("/api/complaints/<complaint_id>/rating")
+    def patch_rating(complaint_id):
+        payload = request.get_json(silent=True) or {}
+        rating = payload.get("rating")
+        if not isinstance(rating, int) or rating < 1 or rating > 5:
+            return jsonify({"error": "Rating must be an integer between 1 and 5"}), 400
+
+        updated = update_complaint_rating(complaint_id, rating)
+        if not updated:
+            return jsonify({"error": "Complaint not found"}), 404
+        return jsonify(updated)
+
+    @app.post("/api/complaints/<complaint_id>/solution")
+    def generate_solution(complaint_id):
+        complaint = get_complaint(complaint_id)
+        if not complaint:
+            return jsonify({"error": "Complaint not found"}), 404
+
+        if complaint.get("ai_solution"):
+            return jsonify(complaint)
+
+        solution_text = generate_resolution_sop(
+            complaint.get("title", ""),
+            complaint.get("description", ""),
+            complaint.get("category", "")
+        )
+        
+        updated = save_complaint_solution(complaint_id, solution_text)
         return jsonify(updated)
 
     return app
