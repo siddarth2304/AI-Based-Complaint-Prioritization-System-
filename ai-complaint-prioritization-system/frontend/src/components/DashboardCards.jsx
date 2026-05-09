@@ -8,7 +8,7 @@ const cards = [
   ["In Progress", "in_progress", BarChart3],
   ["Resolved", "resolved", CheckCircle2],
   ["Avg Score", "average_priority_score", Gauge],
-  ["Avg Rating", "average_satisfaction_score", Star],
+  ["Avg Rating", "average_satisfaction_rating", Star],
   ["Escalations", "escalation_count", Siren],
 ];
 

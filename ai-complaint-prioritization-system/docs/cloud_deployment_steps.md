@@ -33,7 +33,7 @@ gcloud run deploy ai-complaint-backend \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID,GCP_LOCATION=us-central1,VERTEX_MODEL=gemini-1.5-flash
+  --set-env-vars USE_IN_MEMORY_DB=false,GCP_PROJECT_ID=YOUR_PROJECT_ID,GCP_LOCATION=us-central1,VERTEX_MODEL=gemini-1.5-flash
 ```
 
 ## 5. Run Frontend Locally
@@ -49,12 +49,12 @@ npm run dev
 
 ```bash
 cd cloud_function_escalation
-gcloud functions deploy escalation_checker \
+gcloud functions deploy complaint-escalation-function \
   --gen2 \
   --runtime python311 \
   --region us-central1 \
   --source . \
-  --entry-point escalation_checker \
+  --entry-point escalate_complaint \
   --trigger-http \
   --allow-unauthenticated \
   --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID

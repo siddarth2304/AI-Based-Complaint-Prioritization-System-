@@ -39,13 +39,9 @@ def list_complaints():
     db = get_firestore_client()
     if db:
         docs = db.collection("complaints").order_by("created_at", direction="DESCENDING").stream()
-        return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+        return sort_complaints([{"id": doc.id, **doc.to_dict()} for doc in docs])
 
-    return sorted(
-        [{"id": complaint_id, **data} for complaint_id, data in _memory_store.items()],
-        key=lambda item: item.get("created_at", ""),
-        reverse=True,
-    )
+    return sort_complaints([{"id": complaint_id, **data} for complaint_id, data in _memory_store.items()])
 
 
 def update_complaint_status(complaint_id, status):
@@ -102,13 +98,14 @@ def update_complaint_rating(complaint_id, rating):
         snapshot = doc_ref.get()
         if not snapshot.exists:
             return None
-        doc_ref.update({"rating": rating, "updated_at": now})
+        doc_ref.update({"satisfaction_rating": rating, "rating_submitted_at": now, "updated_at": now})
         updated = doc_ref.get().to_dict()
         return {"id": complaint_id, **updated}
 
     if complaint_id not in _memory_store:
         return None
-    _memory_store[complaint_id]["rating"] = rating
+    _memory_store[complaint_id]["satisfaction_rating"] = rating
+    _memory_store[complaint_id]["rating_submitted_at"] = now
     _memory_store[complaint_id]["updated_at"] = now
     return {"id": complaint_id, **_memory_store[complaint_id]}
 
@@ -118,8 +115,11 @@ def get_complaint_stats():
     total = len(complaints)
     score_sum = sum(int(item.get("priority_score", 0)) for item in complaints)
     
-    rated_complaints = [item for item in complaints if item.get("rating") is not None]
-    rating_sum = sum(int(item.get("rating", 0)) for item in rated_complaints)
+    rated_complaints = [
+        item for item in complaints
+        if item.get("status") == "Resolved" and item.get("satisfaction_rating") is not None
+    ]
+    rating_sum = sum(int(item.get("satisfaction_rating", 0)) for item in rated_complaints)
     average_rating = round(rating_sum / len(rated_complaints), 1) if rated_complaints else 0
 
     return {
@@ -131,12 +131,32 @@ def get_complaint_stats():
         "in_progress": count_by(complaints, "status", "In Progress"),
         "resolved": count_by(complaints, "status", "Resolved"),
         "average_priority_score": round(score_sum / total, 2) if total else 0,
-        "average_satisfaction_score": average_rating,
+        "average_satisfaction_rating": average_rating,
         "sdg_9_count": count_by(complaints, "sdg", "SDG 9"),
         "sdg_16_count": count_by(complaints, "sdg", "SDG 16"),
         "escalation_count": sum(1 for item in complaints if item.get("escalation_required")),
+        "image_complaint_count": sum(1 for item in complaints if item.get("image_uploaded")),
     }
 
 
 def count_by(items, field, value):
     return sum(1 for item in items if item.get(field) == value)
+
+
+def sort_complaints(complaints):
+    priority_rank = {"High": 0, "Medium": 1, "Low": 2}
+    return sorted(
+        complaints,
+        key=lambda item: (
+            0 if item.get("escalation_required") else 1,
+            priority_rank.get(item.get("priority"), 3),
+            -timestamp_value(item.get("created_at", "")),
+        ),
+    )
+
+
+def timestamp_value(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0

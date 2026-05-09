@@ -102,6 +102,7 @@ export default function App() {
             loading={loading}
             onStatusChange={handleStatusChange}
             onRatingChange={handleRatingChange}
+            onRefresh={loadData}
           />
         </section>
       </div>

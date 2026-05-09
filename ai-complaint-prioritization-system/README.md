@@ -31,6 +31,8 @@ Manual complaint handling can delay urgent safety, security, and infrastructure 
 - SLA Countdown: High gets 24 hours, Medium gets 72 hours, Low gets 7 days.
 - Smart Dashboard: total, priority counts, status counts, average score, SDG distribution, and escalation count.
 - Escalation Flag: serious words such as danger, harassment, accident, security, medical, fire, or urgent are marked as immediate attention.
+- Optional Image Evidence: small images are validated in the frontend, converted to Base64, and stored in Firestore for demo-friendly evidence capture.
+- Ask AI Assistance: Gemini-powered helper guides users to write clearer complaints, with a local fallback when cloud credentials are unavailable.
 - Cloud-ready Architecture: backend deploys to Cloud Run, data goes to Firestore, AI uses Vertex AI, and escalation automation is represented by Cloud Functions.
 
 ## SDG Relevance
@@ -41,9 +43,9 @@ Manual complaint handling can delay urgent safety, security, and infrastructure 
 ## Google Cloud Components Used
 
 - Cloud Run: Hosts the containerized Flask backend API.
-- Firestore: Stores complaint documents and dashboard data.
-- Vertex AI Gemini: Performs AI/NLP complaint classification.
-- Cloud Functions: Performs automated escalation post-processing.
+- Firestore: Stores complaint documents, AI priority results, dashboard fields, image metadata/Base64 evidence, status, and rating.
+- Vertex AI Gemini: Classifies complaints, generates priority, score, SDG mapping, assigned department, AI reason, and powers Ask AI Assistance.
+- Cloud Functions: Performs automated escalation post-processing for urgent complaints.
 
 ## Architecture Explanation
 
@@ -90,19 +92,19 @@ gcloud run deploy ai-complaint-backend \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID,GCP_LOCATION=us-central1,VERTEX_MODEL=gemini-1.5-flash
+  --set-env-vars USE_IN_MEMORY_DB=false,GCP_PROJECT_ID=YOUR_PROJECT_ID,GCP_LOCATION=us-central1,VERTEX_MODEL=gemini-1.5-flash
 ```
 
 Deploy Cloud Function:
 
 ```bash
 cd cloud_function_escalation
-gcloud functions deploy escalation_checker \
+gcloud functions deploy complaint-escalation-function \
   --gen2 \
   --runtime python311 \
   --region us-central1 \
   --source . \
-  --entry-point escalation_checker \
+  --entry-point escalate_complaint \
   --trigger-http \
   --allow-unauthenticated \
   --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID
@@ -115,6 +117,25 @@ gcloud functions deploy escalation_checker \
 - `GET /api/complaints`: returns all complaints sorted newest first.
 - `GET /api/complaints/stats`: returns dashboard metrics.
 - `PATCH /api/complaints/<id>/status`: updates complaint status.
+- `PATCH /api/complaints/<id>/rating`: stores optional 1-5 satisfaction rating for resolved complaints.
+- `POST /api/complaints/<id>/solution`: generates resolution steps for administrators.
+- `POST /api/ai/assist`: returns Gemini or fallback writing help for complaint submitters.
+
+`POST /api/complaints` accepts normal JSON and optional image evidence:
+
+```json
+{
+  "name": "Sahith",
+  "email": "student@example.com",
+  "department": "CSE",
+  "title": "Fire issue in lab",
+  "description": "There is smoke and burning smell near the computer lab.",
+  "image_uploaded": true,
+  "image_name": "photo.jpg",
+  "image_type": "image/jpeg",
+  "image_base64": "data:image/jpeg;base64,..."
+}
+```
 
 ## Demo Flow
 
@@ -125,7 +146,9 @@ gcloud functions deploy escalation_checker \
 5. Submit “Library seating suggestion” and show Low priority.
 6. Show dashboard cards and charts updating automatically.
 7. Update complaint status from Pending to In Progress to Resolved.
-8. Explain Cloud Run, Firestore, Vertex AI, and Cloud Functions deployment path.
+8. Submit an optional satisfaction rating after resolution.
+9. Use Ask AI Assistance to generate clearer complaint text.
+10. Explain Cloud Run, Firestore, Vertex AI, and Cloud Functions deployment path.
 
 ## Screenshots
 
@@ -135,6 +158,8 @@ gcloud functions deploy escalation_checker \
 - Firestore collection screenshot
 - Cloud Run service screenshot
 - Cloud Function deployment screenshot
+- Image upload preview screenshot
+- Ask AI Assistance screenshot
 
 ## Team Members
 

@@ -5,7 +5,7 @@ from google.cloud import firestore
 
 URGENT_KEYWORDS = [
     "urgent", "emergency", "fire", "accident", "danger", "harassment",
-    "security", "medical", "violence", "threat", "unsafe", "smoke"
+    "security", "medical", "violence", "threat", "unsafe", "smoke", "sparking"
 ]
 
 
@@ -49,7 +49,8 @@ def escalate_complaint(request: Request):
         # Optional Firestore update if complaint_id exists
         if complaint_id:
             try:
-                db = firestore.Client(project=os.getenv("GCP_PROJECT_ID"))
+                project_id = os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+                db = firestore.Client(project=project_id) if project_id else firestore.Client()
                 db.collection("complaints").document(complaint_id).set(
                     {
                         "escalation_required": escalation_required,

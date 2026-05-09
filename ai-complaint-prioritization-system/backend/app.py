@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from services.ai_priority_service import classify_complaint, generate_resolution_sop
+from services.ai_priority_service import assist_user, classify_complaint, generate_resolution_sop
 from services.firestore_service import (
     create_complaint,
     get_complaint_stats,
@@ -46,7 +46,23 @@ def create_app():
         if missing:
             return jsonify({"error": "Missing required fields", "missing": missing}), 400
 
-        classification = classify_complaint(payload["title"], payload["description"], payload.get("image"))
+        image_uploaded = bool(payload.get("image_uploaded") and payload.get("image_base64"))
+        image_data = {"image_uploaded": image_uploaded}
+        if image_uploaded:
+            image_data.update(
+                {
+                    "image_name": str(payload.get("image_name", "")).strip(),
+                    "image_type": str(payload.get("image_type", "")).strip(),
+                    "image_base64": payload.get("image_base64"),
+                    "image_note": "Stored as Base64 for academic prototype",
+                }
+            )
+
+        classification = classify_complaint(
+            payload["title"],
+            payload["description"],
+            image_data.get("image_base64") if image_uploaded else None,
+        )
         now = datetime.now(timezone.utc).isoformat()
         sla_deadline = calculate_sla_deadline(classification["priority"])
 
@@ -67,6 +83,7 @@ def create_app():
             "escalation_required": bool(classification["escalation_required"]),
             "created_at": now,
             "updated_at": now,
+            **image_data,
         }
 
         created = create_complaint(complaint)
@@ -103,6 +120,14 @@ def create_app():
         if not updated:
             return jsonify({"error": "Complaint not found"}), 404
         return jsonify(updated)
+
+    @app.post("/api/ai/assist")
+    def ai_assist():
+        payload = request.get_json(silent=True) or {}
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            return jsonify({"error": "Message is required"}), 400
+        return jsonify({"reply": assist_user(message)})
 
     @app.post("/api/complaints/<complaint_id>/solution")
     def generate_solution(complaint_id):

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Send, Mic, MicOff } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Bot, Image, Mic, MicOff, Send, Trash2 } from "lucide-react";
 import { api } from "../api";
 
 const initialState = {
@@ -8,14 +8,21 @@ const initialState = {
   department: "CSE",
   title: "",
   description: "",
-  image: null,
 };
+
+const maxImageSize = 1024 * 1024;
 
 export default function ComplaintForm({ onCreated }) {
   const [form, setForm] = useState(initialState);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [image, setImage] = useState(null);
+  const [assistMessage, setAssistMessage] = useState("");
+  const [assistReply, setAssistReply] = useState("");
+  const [assistLoading, setAssistLoading] = useState(false);
+  const recognitionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   function updateField(event) {
     setForm({ ...form, [event.target.name]: event.target.value });
@@ -23,46 +30,78 @@ export default function ComplaintForm({ onCreated }) {
 
   function handleImageChange(event) {
     const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setForm({ ...form, image: reader.result }); // Base64
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setForm({ ...form, image: null });
+    setMessage("");
+    if (!file) {
+      setImage(null);
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setMessage("Please select a valid image file.");
+      clearImage();
+      return;
+    }
+    if (file.size > maxImageSize) {
+      setMessage("Image size must be 1 MB or less.");
+      clearImage();
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImage({
+        name: file.name,
+        type: file.type,
+        base64: reader.result,
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearImage() {
+    setImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   }
 
   function toggleListening() {
     if (isListening) {
+      recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
     
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Your browser does not support Speech Recognition.");
+      setMessage("Voice input is not supported in this browser.");
       return;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-IN";
+    recognitionRef.current = recognition;
 
     recognition.onstart = () => setIsListening(true);
     
     recognition.onresult = (event) => {
-      let currentTranscript = "";
+      let finalTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        currentTranscript += event.results[i][0].transcript;
+        finalTranscript += event.results[i][0].transcript;
       }
-      setForm((prev) => ({ ...prev, description: prev.description + " " + currentTranscript.trim() }));
+      const transcript = finalTranscript.trim();
+      if (transcript) {
+        setForm((prev) => ({
+          ...prev,
+          description: `${prev.description}${prev.description ? " " : ""}${transcript}`,
+        }));
+      }
     };
 
     recognition.onerror = (event) => {
       console.error("Speech recognition error", event.error);
       setIsListening(false);
+      setMessage("Voice input stopped. You can continue typing manually.");
     };
 
     recognition.onend = () => {
@@ -77,14 +116,36 @@ export default function ComplaintForm({ onCreated }) {
     setSubmitting(true);
     setMessage("");
     try {
-      await api.submitComplaint(form);
+      await api.submitComplaint({
+        ...form,
+        image_uploaded: Boolean(image?.base64),
+        image_name: image?.name || "",
+        image_type: image?.type || "",
+        image_base64: image?.base64 || "",
+      });
       setForm(initialState);
+      clearImage();
       setMessage("Complaint submitted and prioritized successfully.");
       await onCreated();
     } catch (err) {
       setMessage(err.message);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAssist(event) {
+    event.preventDefault();
+    if (!assistMessage.trim()) return;
+    setAssistLoading(true);
+    setAssistReply("");
+    try {
+      const data = await api.askAiAssist(assistMessage.trim());
+      setAssistReply(data.reply || "No reply received.");
+    } catch (err) {
+      setAssistReply(err.message || "AI assistance request failed.");
+    } finally {
+      setAssistLoading(false);
     }
   }
 
@@ -109,9 +170,22 @@ export default function ComplaintForm({ onCreated }) {
             {isListening ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-slate-700">Optional Evidence (Image)</label>
-          <input className="input py-2 text-sm" type="file" accept="image/*" onChange={handleImageChange} />
+          <input ref={fileInputRef} className="input py-2 text-sm" type="file" accept="image/*" onChange={handleImageChange} />
+          {image?.base64 && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <img src={image.base64} alt="Selected evidence preview" className="max-h-36 rounded-md object-contain" />
+              <div className="mt-2 flex items-center justify-between gap-3 text-sm text-slate-600">
+                <span className="flex items-center gap-2">
+                  <Image size={16} /> {image.name}
+                </span>
+                <button type="button" className="small-button" onClick={clearImage}>
+                  <Trash2 size={14} /> Remove
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <button className="primary-button w-full" type="submit" disabled={submitting}>
           <Send size={18} />
@@ -119,6 +193,22 @@ export default function ComplaintForm({ onCreated }) {
         </button>
       </form>
       {message && <p className="mt-4 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">{message}</p>}
+      <form className="mt-6 border-t border-slate-200 pt-5" onSubmit={handleAssist}>
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <Bot size={18} /> Ask AI Assistance
+        </div>
+        <textarea
+          className="input mt-3 min-h-20 resize-y"
+          value={assistMessage}
+          onChange={(event) => setAssistMessage(event.target.value)}
+          placeholder="Ask how to write a clear complaint..."
+        />
+        <button className="small-button mt-3 w-full bg-blue-100 text-blue-800" type="submit" disabled={assistLoading || !assistMessage.trim()}>
+          <Bot size={16} />
+          {assistLoading ? "Asking..." : "Ask AI"}
+        </button>
+        {assistReply && <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">{assistReply}</p>}
+      </form>
     </section>
   );
 }

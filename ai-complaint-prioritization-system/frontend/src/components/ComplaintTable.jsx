@@ -6,7 +6,7 @@ const statuses = ["Pending", "In Progress", "Resolved"];
 const priorities = ["All", "High", "Medium", "Low"];
 const sdgs = ["All", "SDG 9", "SDG 16"];
 
-export default function ComplaintTable({ complaints, loading, onStatusChange, onRatingChange }) {
+export default function ComplaintTable({ complaints, loading, onStatusChange, onRatingChange, onRefresh }) {
   const [priority, setPriority] = useState("All");
   const [status, setStatus] = useState("All");
   const [sdg, setSdg] = useState("All");
@@ -17,11 +17,7 @@ export default function ComplaintTable({ complaints, loading, onStatusChange, on
     setLoadingSolution(id);
     try {
       await api.generateSolution(id);
-      // We need to trigger a refresh to show the new solution
-      // Since we don't have a direct onRefresh prop, we'll reuse onStatusChange with the current status to force a reload 
-      // or we can assume App.jsx will pass an onRefresh prop if we add it. 
-      // Let's just update the local item if possible, but we don't own the state.
-      // A safe hack is calling a parent function or reloading the page, but let's just use window.location.reload() for simplicity if onRefresh is missing, or add onRefresh to App.jsx.
+      await onRefresh?.();
     } catch (e) {
       console.error(e);
     } finally {
@@ -34,14 +30,16 @@ export default function ComplaintTable({ complaints, loading, onStatusChange, on
     [complaints]
   );
 
-  const filtered = complaints.filter((item) => {
-    return (
-      (priority === "All" || item.priority === priority) &&
-      (status === "All" || item.status === status) &&
-      (sdg === "All" || item.sdg === sdg) &&
-      (category === "All" || item.category === category)
-    );
-  });
+  const filtered = complaints
+    .filter((item) => {
+      return (
+        (priority === "All" || item.priority === priority) &&
+        (status === "All" || item.status === status) &&
+        (sdg === "All" || item.sdg === sdg) &&
+        (category === "All" || item.category === category)
+      );
+    })
+    .sort(sortQueue);
 
   return (
     <section className="card">
@@ -76,8 +74,13 @@ export default function ComplaintTable({ complaints, loading, onStatusChange, on
                   <td className="table-cell max-w-xs">
                     <div className="font-semibold text-slate-900">{item.title}</div>
                     <div className="mt-1 text-slate-500">{item.department} | {item.name}</div>
-                    <div className="mt-1 font-medium text-blue-700">Assigned: {item.assigned_department}</div>
+                    <div className="mt-1 font-medium text-blue-700">Assigned Department: {item.assigned_department || "General Administration"}</div>
                     <div className="mt-2 line-clamp-2 text-slate-600">{item.description}</div>
+                    {item.image_uploaded && (
+                      <div className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                        Image attached
+                      </div>
+                    )}
                     {item.escalation_required && (
                       <div className="mt-2 flex items-center gap-1 font-semibold text-red-700">
                         <AlertTriangle size={16} /> Needs Immediate Attention
@@ -97,7 +100,7 @@ export default function ComplaintTable({ complaints, loading, onStatusChange, on
                           setLoadingSolution(item.id);
                           try {
                             await api.generateSolution(item.id);
-                            window.location.reload(); // Simple way to refresh data
+                            await onRefresh?.();
                           } catch (e) {
                             console.error(e);
                             alert("Failed to get solution: " + e.message + "\nDid you restart the backend?");
@@ -116,17 +119,21 @@ export default function ComplaintTable({ complaints, loading, onStatusChange, on
                   <td className="table-cell">
                     <span className={`priority priority-${item.priority?.toLowerCase()}`}>{item.priority}</span>
                     <div className="mt-2 font-semibold text-slate-700">Score: {item.priority_score}</div>
+                    {item.priority === "High" && <div className="mt-2 text-xs font-bold text-red-700">High Risk</div>}
                   </td>
                   <td className="table-cell max-w-sm text-slate-600">{item.ai_reason}</td>
                   <td className="table-cell"><span className="sdg-pill">{item.sdg}</span></td>
-                  <td className="table-cell whitespace-nowrap">{formatDate(item.sla_deadline)}</td>
+                  <td className="table-cell whitespace-nowrap">
+                    <div className="font-semibold text-slate-700">SLA Deadline</div>
+                    <div>{formatDate(item.sla_deadline)}</div>
+                  </td>
                   <td className="table-cell"><span className="status-pill">{item.status}</span></td>
                   <td className="table-cell">
                     {item.status === "Resolved" ? (
                       <div>
-                        {item.rating ? (
+                        {item.satisfaction_rating ? (
                           <div className="flex gap-1 text-yellow-500">
-                            {[...Array(item.rating)].map((_, i) => (
+                            {[...Array(item.satisfaction_rating)].map((_, i) => (
                               <Star key={i} size={16} fill="currentColor" />
                             ))}
                           </div>
@@ -195,4 +202,13 @@ function formatDate(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function sortQueue(a, b) {
+  const priorityRank = { High: 0, Medium: 1, Low: 2 };
+  const escalationDiff = Number(Boolean(b.escalation_required)) - Number(Boolean(a.escalation_required));
+  if (escalationDiff !== 0) return escalationDiff;
+  const priorityDiff = (priorityRank[a.priority] ?? 3) - (priorityRank[b.priority] ?? 3);
+  if (priorityDiff !== 0) return priorityDiff;
+  return new Date(b.created_at || 0) - new Date(a.created_at || 0);
 }

@@ -39,4 +39,9 @@ export const api = {
     request(`/api/complaints/${id}/solution`, {
       method: "POST",
     }),
+  askAiAssist: (message) =>
+    request("/api/ai/assist", {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
 };
